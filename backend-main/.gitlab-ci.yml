@@ -1,0 +1,67 @@
+pack:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_PIPELINE_IID --cache=true
+
+pack_prod:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG --destination $CI_REGISTRY_IMAGE:latest --cache=true
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy_review:
+  stage: test
+  image: bitnami/kubectl
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: https://$CI_ENVIRONMENT_SLUG.octoprotect.starcatmeow.cn
+    on_stop: stop_review
+    auto_stop_in: 3 day
+  dependencies:
+    - pack
+  script:
+    - sed -i "s/PULL_SECRET/$PULL_SECRET/g" $CI_PROJECT_DIR/kubernetes/pullsecret.yaml
+    - sed -i "s/IMAGE_TAG/$CI_PIPELINE_IID/g" $CI_PROJECT_DIR/kubernetes/pod.yaml
+    - sed -i "s/DOMAIN/$CI_ENVIRONMENT_SLUG.octoprotect.starcatmeow.cn/g" $CI_PROJECT_DIR/kubernetes/ingress.yaml
+    - kubectl config use-context octoprotect/kubernetes:catmeow-k8s
+    - kubectl create ns octoprotect-$CI_ENVIRONMENT_SLUG
+    - kubectl apply -f $CI_PROJECT_DIR/kubernetes -n octoprotect-$CI_ENVIRONMENT_SLUG
+
+stop_review:
+  stage: test
+  image: bitnami/kubectl
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    action: stop
+  rules:
+    - when: manual
+  script:
+    - kubectl config use-context octoprotect/kubernetes:catmeow-k8s
+    - kubectl delete ns octoprotect-$CI_ENVIRONMENT_SLUG
+
+deploy_prod:
+  stage: deploy
+  image: bitnami/kubectl
+  environment:
+    name: production
+    url: https://octoprotect.starcatmeow.cn
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+  dependencies:
+    - pack_prod
+  script:
+    - sed -i "s/IMAGE_TAG/$CI_COMMIT_TAG/g" $CI_PROJECT_DIR/kubernetes/pod.yaml
+    - kubectl config use-context octoprotect/kubernetes:catmeow-k8s
+    - kubectl apply -f $CI_PROJECT_DIR/kubernetes/pod.yaml -n octoprotect-prod

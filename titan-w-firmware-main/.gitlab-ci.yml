@@ -1,0 +1,33 @@
+build_firmware:
+  stage: build
+  image: nordicplayground/nrfconnect-sdk:main
+  script:
+  - cp -R . /workdir/project
+  - cd /workdir/project
+  - nrfutil toolchain-manager launch west -- build --build-dir build . --board nrf52840dongle_nrf52840 -DDTC_OVERLAY_FILE:STRING="boards/titan_w.overlay"
+  - cp build/zephyr/zephyr.hex $CI_PROJECT_DIR/
+  artifacts:
+    paths:
+    - "zephyr.hex"
+    expire_in: never
+    reports:
+      dotenv: job.env
+  after_script:
+    - cd $CI_PROJECT_DIR
+    - echo "JOB_ID=$CI_JOB_ID" >> job.env
+
+create_release:
+  stage: deploy
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - 'echo "Release $CI_COMMIT_TAG, Build Job ID: $JOB_ID"'
+  release: 
+    name: 'Release $CI_COMMIT_TAG'
+    tag_name: '$CI_COMMIT_TAG'
+    description: '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: "artifacts.zip"
+          url: "https://git.uwaterloo.ca/octoprotect/titan-w-firmware/-/jobs/$JOB_ID/artifacts/download"

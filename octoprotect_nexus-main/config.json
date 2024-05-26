@@ -1,0 +1,4 @@
+{
+  "url": "ws://localhost:5275",
+  "token": "<api-auth-token-here>"
+}
