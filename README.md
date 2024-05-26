@@ -29,8 +29,7 @@ OctoProtect protects personal belongings using the NEXUS device with tentacles a
 
 ## Intellectual Property
 
-- Used open-source libraries under MIT, BSD, Apache, and MPL licenses.
-
+Used open-source libraries under MIT, BSD, Apache, and MPL licenses.
 
 ## License
 
